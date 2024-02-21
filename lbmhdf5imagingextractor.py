@@ -33,7 +33,7 @@ except ImportError:
 class LbmHdf5ImagingExtractor(ImagingExtractor):
     """An imaging extractor for LBM-style HDF5-based mat files."""
 
-    extractor_name = "Hdf5Imaging"
+    extractor_name = "LbmHdf5Imaging"
     installed = HAVE_H5  # check at class level if installed or not
     is_writable = True
     mode = "file"
@@ -101,9 +101,8 @@ class LbmHdf5ImagingExtractor(ImagingExtractor):
         else:
             self.metadata = metadata
 
-        # The test data has three dimensions: rows, cols, frames
         self._num_channels = 1
-        self._num_cols, self._num_rows, self._num_frames = self._video.shape
+        self._num_frames, self._num_cols, self._num_rows = self._video.shape  # returns (time, col, row)
         self._dtype = self._video[0].dtype
         # self._video = self._video.lazy_transpose([2, 0, 1])  # should be: (samples, rows, columns)
 
@@ -133,15 +132,20 @@ class LbmHdf5ImagingExtractor(ImagingExtractor):
         else:
             slice_start = 0
             slice_stop = self.get_num_frames()
-
-        frames = self._video[:, :, slice_start:slice_stop].transpose([2, 1, 0])
+        
+        # ix order in self._video: [t, c, r] 
+        # ix order expected by DANDI in the final file: [t, r, c]
+        # however, the following happens in imaginextractordatachunkiterator.py, line 140:
+        # tranpose_axes = (0, 2, 1) if len(data.shape) == 3 else (0, 2, 1, 3)
+        # so it flips the c and r axis there, anyways, we don't have to do that here
+        frames = self._video[slice_start:slice_stop, :, :]
         if isinstance(frame_idxs, int):
             frames = frames.squeeze()
 
         return frames
 
     def get_video(self, start_frame=None, end_frame=None, channel: Optional[int] = 0) -> np.ndarray:
-        return self._video[:, :, start_frame:end_frame].transpose([2, 1, 0])
+        return self._video[start_frame:end_frame, :, :]
 
     def get_image_size(self) -> Tuple[int, int]:
         return (self._num_rows, self._num_cols)
